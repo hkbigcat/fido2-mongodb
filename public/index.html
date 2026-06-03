@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FIDO2 Demo • Passkeys</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    body { font-family: ui-sans-serif, system-ui, sans-serif; }
+    .passkey-icon { font-size: 1.1rem; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    .section { transition: all 0.2s ease; }
+    .log { font-size: 0.75rem; }
+  </style>
+</head>
+<body class="bg-zinc-950 text-zinc-200">
+  <div class="max-w-3xl mx-auto px-4 py-8">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-8">
+      <div class="flex items-center gap-x-3">
+        <div class="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center">
+          <i class="fa-solid fa-key text-white text-2xl"></i>
+        </div>
+        <div>
+          <h1 class="text-3xl font-semibold tracking-tight">FIDO2 Demo</h1>
+          <p class="text-zinc-500 text-sm -mt-1">Passkey registration &amp; login</p>
+        </div>
+      </div>
+      <div id="status-bar" class="flex items-center gap-x-3 text-sm">
+        <!-- populated by JS -->
+      </div>
+    </div>
+
+    <!-- Info banner -->
+    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl px-5 py-3 mb-6 text-sm flex items-start gap-3">
+      <i class="fa-solid fa-info-circle text-emerald-500 mt-0.5"></i>
+      <div class="text-zinc-400">
+        This is a basic demo using <span class="font-medium text-zinc-300">WebAuthn / FIDO2</span> with Node.js + MongoDB. 
+        Works best with modern browsers on <span class="font-medium">localhost</span> or HTTPS. 
+        Use a security key, Windows Hello, Touch ID, or passkey from your password manager.
+      </div>
+    </div>
+
+    <!-- Current User -->
+    <div id="logged-in-view" class="hidden section bg-zinc-900 border border-zinc-800 rounded-3xl p-6 mb-6">
+      <div class="flex items-center justify-between">
+        <div>
+          <div class="text-xs uppercase tracking-widest text-emerald-500 font-medium">Signed in</div>
+          <div id="logged-in-username" class="text-2xl font-semibold text-white"></div>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="registerAnother()" 
+                  class="px-4 py-2 rounded-2xl bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-600 text-sm flex items-center gap-x-2 transition-colors">
+            <i class="fa-solid fa-plus"></i>
+            <span>Add another passkey</span>
+          </button>
+          <button onclick="logout()" 
+                  class="px-4 py-2 rounded-2xl bg-zinc-800 hover:bg-red-900/40 active:bg-red-900/60 text-sm flex items-center gap-x-2 transition-colors text-red-400 hover:text-red-300">
+            <i class="fa-solid fa-sign-out-alt"></i>
+            <span>Sign out</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Credentials list -->
+      <div class="mt-6">
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-sm font-medium text-zinc-400">Registered passkeys</div>
+          <button onclick="loadCredentials()" class="text-xs px-2 py-1 rounded-lg hover:bg-zinc-800 text-zinc-500">
+            <i class="fa-solid fa-sync mr-1"></i>Refresh
+          </button>
+        </div>
+        <div id="credentials-list" class="space-y-2 text-sm"></div>
+      </div>
+    </div>
+
+    <!-- Auth forms (shown when logged out) -->
+    <div id="auth-forms">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Register -->
+        <div class="section bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+          <div class="flex items-center gap-x-2 mb-4">
+            <i class="fa-solid fa-user-plus text-emerald-500"></i>
+            <h2 class="font-semibold text-lg">Register / Create account</h2>
+          </div>
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs text-zinc-500 mb-1.5">Username</label>
+              <input id="reg-username" type="text" placeholder="alice" 
+                     class="w-full bg-zinc-950 border border-zinc-800 focus:border-emerald-600 outline-none rounded-2xl px-4 py-2.5 text-sm placeholder:text-zinc-600">
+            </div>
+            <button onclick="startRegistration()" 
+                    class="w-full flex items-center justify-center gap-x-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 transition-colors text-white font-medium rounded-2xl py-2.5 text-sm">
+              <i class="fa-solid fa-fingerprint"></i>
+              <span>Register with Passkey</span>
+            </button>
+            <p class="text-[11px] text-zinc-500 px-1">Creates a new user (if needed) and registers a FIDO2 credential.</p>
+          </div>
+        </div>
+
+        <!-- Login -->
+        <div class="section bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+          <div class="flex items-center gap-x-2 mb-4">
+            <i class="fa-solid fa-sign-in-alt text-sky-500"></i>
+            <h2 class="font-semibold text-lg">Login with Passkey</h2>
+          </div>
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs text-zinc-500 mb-1.5">Username</label>
+              <input id="login-username" type="text" placeholder="alice" 
+                     class="w-full bg-zinc-950 border border-zinc-800 focus:border-sky-600 outline-none rounded-2xl px-4 py-2.5 text-sm placeholder:text-zinc-600">
+            </div>
+            <button onclick="startLogin()" 
+                    class="w-full flex items-center justify-center gap-x-2 bg-sky-600 hover:bg-sky-500 active:bg-sky-700 transition-colors text-white font-medium rounded-2xl py-2.5 text-sm">
+              <i class="fa-solid fa-key"></i>
+              <span>Login with Passkey</span>
+            </button>
+            <p class="text-[11px] text-zinc-500 px-1">Authenticates using an existing registered credential for the user.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Activity log -->
+    <div class="mt-8">
+      <div class="flex items-center gap-x-2 mb-2 px-1">
+        <i class="fa-solid fa-terminal text-xs text-zinc-600"></i>
+        <div class="uppercase tracking-[1px] text-xs text-zinc-500 font-medium">Activity</div>
+      </div>
+      <div id="log" 
+           class="bg-black border border-zinc-900 rounded-3xl p-4 h-40 overflow-auto text-emerald-400/90 text-xs font-mono log space-y-1"></div>
+    </div>
+
+    <div class="text-center mt-6 text-[10px] text-zinc-600">
+      RP ID: <span id="rp-info" class="mono"></span> • 
+      <a href="https://webauthn.io" target="_blank" class="underline hover:text-zinc-400">Learn more about WebAuthn</a>
+    </div>
+  </div>
+
+  <script>
+    // Tailwind script
+    function initTailwind() {
+      document.documentElement.style.setProperty('color-scheme', 'dark');
+    }
+
+    // === Base64URL helpers (compatible with @simplewebauthn) ===
+    const b64url = {
+      encode(buffer) {
+        if (!buffer) return '';
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        for (let i = 0; i < bytes.byteLength; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        return btoa(binary)
+          .replace(/\+/g, '-')
+          .replace(/\//g, '_')
+          .replace(/=/g, '');
+      },
+      decode(base64urlString) {
+        if (!base64urlString) return new ArrayBuffer(0);
+        let base64 = base64urlString.replace(/-/g, '+').replace(/_/g, '/');
+        // Pad
+        while (base64.length % 4) {
+          base64 += '=';
+        }
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        return bytes.buffer;
+      }
+    };
+
+    // Convert WebAuthn PublicKeyCredential (from create/get) into the JSON shape expected by server
+    function credentialToJSON(cred) {
+      if (!cred) return cred;
+      const result = {
+        id: cred.id,                    // already base64url string
+        rawId: b64url.encode(cred.rawId),
+        type: cred.type,
+        authenticatorAttachment: cred.authenticatorAttachment || null,
+        clientExtensionResults: cred.getClientExtensionResults ? cred.getClientExtensionResults() : {},
+        response: {},
+      };
+
+      const resp = cred.response || {};
+      if (resp.attestationObject) {
+        result.response.attestationObject = b64url.encode(resp.attestationObject);
+      }
+      if (resp.clientDataJSON) {
+        result.response.clientDataJSON = b64url.encode(resp.clientDataJSON);
+      }
+      if (resp.authenticatorData) {
+        result.response.authenticatorData = b64url.encode(resp.authenticatorData);
+      }
+      if (resp.signature) {
+        result.response.signature = b64url.encode(resp.signature);
+      }
+      if (resp.userHandle) {
+        result.response.userHandle = b64url.encode(resp.userHandle);
+      }
+      // transports if present (some browsers)
+      if (cred.response && cred.response.getTransports) {
+        try { result.response.transports = cred.response.getTransports(); } catch(e) {}
+      }
+      return result;
+    }
+
+    // Convert options returned by server (base64url strings) into WebAuthn-friendly options (ArrayBuffers)
+    function optionsToWebAuthn(opts, isRegistration) {
+      const out = { ...opts };
+      if (out.challenge) {
+        out.challenge = b64url.decode(out.challenge);
+      }
+      if (isRegistration && out.user && out.user.id) {
+        out.user = { ...out.user, id: b64url.decode(out.user.id) };
+      }
+      const credKey = isRegistration ? 'excludeCredentials' : 'allowCredentials';
+      if (out[credKey] && Array.isArray(out[credKey])) {
+        out[credKey] = out[credKey].map(c => ({
+          ...c,
+          id: b64url.decode(c.id),
+        }));
+      }
+      return out;
+    }
+
+    // === UI helpers ===
+    let currentUser = null;
+
+    function log(msg, isError = false) {
+      const el = document.getElementById('log');
+      const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const line = document.createElement('div');
+      line.className = isError ? 'text-red-400/90' : '';
+      line.textContent = `[${time}] ${msg}`;
+      el.appendChild(line);
+      el.scrollTop = el.scrollHeight;
+      // keep only last 30 lines
+      while (el.children.length > 30) el.removeChild(el.firstChild);
+    }
+
+    function setStatus(user) {
+      currentUser = user;
+      const bar = document.getElementById('status-bar');
+      const loggedView = document.getElementById('logged-in-view');
+      const forms = document.getElementById('auth-forms');
+
+      if (user && user.username) {
+        bar.innerHTML = `
+          <div class="flex items-center gap-x-2 bg-zinc-900 border border-zinc-800 rounded-2xl px-3 py-1 text-sm">
+            <i class="fa-solid fa-user-check text-emerald-500"></i>
+            <span class="font-medium">${user.username}</span>
+          </div>
+        `;
+        loggedView.classList.remove('hidden');
+        forms.classList.add('hidden');
+        document.getElementById('logged-in-username').textContent = user.username;
+        loadCredentials();
+      } else {
+        bar.innerHTML = `
+          <div class="px-3 py-1 text-xs rounded-2xl bg-zinc-900 border border-zinc-800 text-zinc-500">Not signed in</div>
+        `;
+        loggedView.classList.add('hidden');
+        forms.classList.remove('hidden');
+        document.getElementById('credentials-list').innerHTML = '';
+      }
+    }
+
+    async function fetchMe() {
+      try {
+        const res = await fetch('/api/me');
+        const data = await res.json();
+        if (data.user) {
+          setStatus(data.user);
+          log(`Session restored for ${data.user.username}`);
+        } else {
+          setStatus(null);
+        }
+      } catch (e) {
+        setStatus(null);
+      }
+    }
+
+    async function loadCredentials() {
+      if (!currentUser) return;
+      const listEl = document.getElementById('credentials-list');
+      listEl.innerHTML = `<div class="text-xs text-zinc-500 px-2 py-1">Loading...</div>`;
+
+      try {
+        const res = await fetch('/api/credentials');
+        if (!res.ok) throw new Error('Failed to load credentials');
+        const data = await res.json();
+
+        if (!data.credentials || data.credentials.length === 0) {
+          listEl.innerHTML = `<div class="text-xs px-3 py-2 bg-zinc-950 rounded-2xl border border-zinc-800 text-zinc-500">No passkeys registered yet.</div>`;
+          return;
+        }
+
+        listEl.innerHTML = data.credentials.map((cred, idx) => `
+          <div class="flex items-center justify-between bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-2.5 text-xs">
+            <div class="flex items-center gap-x-3 min-w-0">
+              <i class="fa-solid fa-shield-halved text-emerald-500 passkey-icon"></i>
+              <div class="min-w-0">
+                <div class="font-mono text-emerald-400/90 truncate">${cred.credentialID.substring(0, 24)}…</div>
+                <div class="text-[10px] text-zinc-500">counter: ${cred.counter} ${cred.transports && cred.transports.length ? '• ' + cred.transports.join(',') : ''}</div>
+              </div>
+            </div>
+            <button onclick="deleteCredential('${cred.credentialID}')" 
+                    class="text-red-400/70 hover:text-red-400 px-2 py-1 rounded-xl hover:bg-red-950/40 transition">
+              <i class="fa-solid fa-trash text-xs"></i>
+            </button>
+          </div>
+        `).join('');
+      } catch (err) {
+        listEl.innerHTML = `<div class="text-red-400 text-xs px-2">Error loading credentials: ${err.message}</div>`;
+      }
+    }
+
+    async function deleteCredential(credentialID) {
+      if (!confirm('Remove this passkey? You will need another way to log in if this is your only one.')) return;
+      try {
+        const res = await fetch(`/api/credentials/${encodeURIComponent(credentialID)}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Delete failed');
+        log('Credential removed');
+        await loadCredentials();
+      } catch (e) {
+        log('Failed to delete credential: ' + e.message, true);
+      }
+    }
+
+    // === Core flows ===
+
+    async function startRegistration() {
+      const input = document.getElementById('reg-username');
+      const username = input.value.trim();
+      if (!username) {
+        alert('Please enter a username');
+        return;
+      }
+
+      log(`Starting registration for "${username}"...`);
+
+      try {
+        const optionsRes = await fetch('/api/register/options', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username }),
+        });
+        const options = await optionsRes.json();
+        if (!optionsRes.ok) throw new Error(options.error || 'Failed to get registration options');
+
+        log('Got registration options from server. Prompting authenticator...');
+
+        // Convert to WebAuthn buffers
+        const publicKey = optionsToWebAuthn(options, true);
+
+        const credential = await navigator.credentials.create({ publicKey });
+        if (!credential) throw new Error('No credential returned from authenticator');
+
+        const attestationResponse = credentialToJSON(credential);
+
+        log('Credential created. Verifying with server...');
+
+        const verifyRes = await fetch('/api/register/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, attestationResponse }),
+        });
+        const verifyData = await verifyRes.json();
+
+        if (!verifyRes.ok || !verifyData.verified) {
+          throw new Error(verifyData.error || 'Registration verification failed');
+        }
+
+        log(`✓ Registration successful for ${verifyData.user.username}`, false);
+        input.value = '';
+        setStatus(verifyData.user);
+        await fetchMe(); // refresh
+      } catch (err) {
+        console.error(err);
+        log('Registration error: ' + (err.message || err), true);
+        alert('Registration failed: ' + (err.message || err));
+      }
+    }
+
+    async function startLogin() {
+      const input = document.getElementById('login-username');
+      const username = input.value.trim();
+      if (!username) {
+        alert('Please enter a username');
+        return;
+      }
+
+      log(`Starting authentication for "${username}"...`);
+
+      try {
+        const optionsRes = await fetch('/api/login/options', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username }),
+        });
+        const options = await optionsRes.json();
+        if (!optionsRes.ok) throw new Error(options.error || 'Failed to get authentication options');
+
+        log('Got auth options. Prompting for passkey / security key...');
+
+        const publicKey = optionsToWebAuthn(options, false);
+
+        const assertion = await navigator.credentials.get({ publicKey });
+        if (!assertion) throw new Error('No assertion from authenticator');
+
+        const assertionResponse = credentialToJSON(assertion);
+
+        log('Assertion created. Verifying with server...');
+
+        const verifyRes = await fetch('/api/login/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, assertionResponse }),
+        });
+        const verifyData = await verifyRes.json();
+
+        if (!verifyRes.ok || !verifyData.verified) {
+          throw new Error(verifyData.error || 'Login verification failed');
+        }
+
+        log(`✓ Login successful. Welcome back, ${verifyData.user.username}!`);
+        input.value = '';
+        setStatus(verifyData.user);
+      } catch (err) {
+        console.error(err);
+        log('Login error: ' + (err.message || err), true);
+        alert('Login failed: ' + (err.message || err));
+      }
+    }
+
+    async function registerAnother() {
+      if (!currentUser) return;
+      // Reuse registration flow but with current username prefilled
+      document.getElementById('reg-username').value = currentUser.username;
+      // switch to forms briefly? no need, we can call directly
+      await startRegistrationWithUsername(currentUser.username);
+    }
+
+    async function startRegistrationWithUsername(username) {
+      log(`Starting additional passkey registration for "${username}"...`);
+      try {
+        const optionsRes = await fetch('/api/register/options', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username }),
+        });
+        const options = await optionsRes.json();
+        if (!optionsRes.ok) throw new Error(options.error || 'Failed to get registration options');
+
+        const publicKey = optionsToWebAuthn(options, true);
+        const credential = await navigator.credentials.create({ publicKey });
+        if (!credential) throw new Error('No credential returned');
+
+        const attestationResponse = credentialToJSON(credential);
+
+        const verifyRes = await fetch('/api/register/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, attestationResponse }),
+        });
+        const verifyData = await verifyRes.json();
+
+        if (!verifyRes.ok || !verifyData.verified) {
+          throw new Error(verifyData.error || 'Verification failed');
+        }
+
+        log(`✓ Additional passkey registered.`);
+        await loadCredentials();
+      } catch (err) {
+        log('Additional registration error: ' + (err.message || err), true);
+        alert(err.message || err);
+      }
+    }
+
+    async function logout() {
+      try {
+        await fetch('/api/logout', { method: 'POST' });
+        log('Logged out');
+        setStatus(null);
+      } catch (e) {
+        setStatus(null);
+      }
+    }
+
+    async function init() {
+      initTailwind();
+
+      // Show RP info
+      try {
+        const health = await fetch('/api/health').then(r => r.json());
+        document.getElementById('rp-info').textContent = `${health.rpID} (origin: ${health.origin})`;
+      } catch (_) {
+        document.getElementById('rp-info').textContent = 'localhost';
+      }
+
+      // Restore session
+      await fetchMe();
+
+      // Demo convenience: if empty, suggest a name
+      const regInput = document.getElementById('reg-username');
+      const loginInput = document.getElementById('login-username');
+      regInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') startRegistration(); });
+      loginInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') startLogin(); });
+
+      log('Ready. Create an account or log in with an existing one.');
+      // Pre-fill for quick testing if desired
+      // regInput.value = 'demo';
+    }
+
+    // Keyboard shortcut hint
+    document.addEventListener('keydown', (e) => {
+      if (e.key.toLowerCase() === '?' && document.activeElement.tagName === 'BODY') {
+        const forms = document.getElementById('auth-forms');
+        if (!forms.classList.contains('hidden')) {
+          document.getElementById('reg-username').focus();
+        }
+      }
+    });
+
+    window.addEventListener('load', init);
+  </script>
+</body>
+</html>
