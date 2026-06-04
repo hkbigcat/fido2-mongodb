@@ -2,8 +2,9 @@
 node_modules/
 
 
-# ── Lockfiles: keep pnpm-lock.yaml, ignore npm/yarn ──────────────────────────
+# ── Lockfiles: ignore package-lock ──────────────────────────
 package-lock.json
+.gitignore
 
 # ── Environment variables ─────────────────────────────────────────────────────
 .env
@@ -17,3 +18,4 @@ npm-debug.log*
 # ── Testing ───────────────────────────────────────────────────────────────────
 playwright-report/
 test-results/
+
