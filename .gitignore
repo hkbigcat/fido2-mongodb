@@ -1,0 +1,19 @@
+# ── Dependencies ──────────────────────────────────────────────────────────────
+node_modules/
+
+
+# ── Lockfiles: keep pnpm-lock.yaml, ignore npm/yarn ──────────────────────────
+package-lock.json
+
+# ── Environment variables ─────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+playwright-report/
+test-results/
